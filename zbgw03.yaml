@@ -1,0 +1,150 @@
+substitutions:
+  name: zb-gw03
+  device_description: "ZB-GW03 eWeLink Ethernet Zigbee Gateway based Zigbee Coordinator"
+  device_role: "coordinator"
+  LedStatus: GPIO15
+  Led_i: GPIO14
+  ETH_POWER: GPIO16
+  ETH_MDIO: GPIO18
+  ETH_MDC: GPIO23
+  Button_1: GPIO34
+  Zigbee_RST_2: GPIO12
+  Zigbee_RST_1: GPIO13
+  Zigbee_Tx: GPIO02
+  Zigbee_Rx: GPIO04
+  I2C_SCL: GPIO32
+  I2C_SDA: GPIO33
+  SM_011_PA00: GPIO12
+  SM_011_nRST: GPIO13
+  zb_uart_port: 6638
+
+esphome:
+  name: ${name}
+  comment: ${device_description}
+  project:
+    name: "immortal.zb-gw03"
+    version: 1.0.0
+
+  on_boot:
+    priority: 600
+    then:
+      - switch.turn_off: download_mode
+      - switch.turn_on: zigbee_reset
+
+esp32:
+  board: esp-wrover-kit
+  framework:
+    type: esp-idf
+
+external_components:
+  - source: github://oxan/esphome-stream-server@master
+
+ota:
+  platform: esphome
+
+logger:
+  level: DEBUG
+
+api:
+  reboot_timeout: 0s
+web_server:
+  port: 80
+  local: True
+
+esp32_ble_tracker:
+  scan_parameters:
+    interval: 1100ms
+    window: 1100ms
+    active: true
+
+bluetooth_proxy:
+  active: true
+  connection_slots: 3
+
+mdns:
+  services:
+    - service: "_zigbee-coordinator"
+      protocol: "_tcp"
+      port: $zb_uart_port
+      txt:
+        name: ZB-GW03
+        serial_number: get_mac_address()
+        radio_type: ember
+ethernet:
+  type: LAN8720
+  mdc_pin: $ETH_MDC
+  mdio_pin: $ETH_MDIO
+  clk:
+    pin: GPIO17
+    mode: CLK_OUT
+  phy_addr: 1
+  power_pin: $ETH_POWER
+uart:
+  id: uart_zigbee
+  rx_pin: $Zigbee_Rx
+  tx_pin: $Zigbee_Tx
+  baud_rate: 115200
+i2c:
+  - id: i2c_bus
+    sda: $I2C_SDA
+    scl: $I2C_SCL
+    scan: true
+stream_server:
+  uart_id: uart_zigbee
+  port: $zb_uart_port
+switch:
+  - platform: restart
+    name: "Restart"
+  - platform: template
+    id: zigbee_reset
+    name: "Zigbee Reset"
+    turn_on_action:
+      - switch.turn_on: zigbee_rst
+      - delay: 10ms
+      - switch.turn_off: zigbee_rst
+  # SM-011 V1.0 nRST
+  - platform: gpio
+    id: zigbee_rst
+    pin: $SM_011_nRST
+    name: "Zigbee nRST"
+    inverted: true
+    internal: true
+    restore_mode: ALWAYS_OFF
+  # SM-011 V1.0 PA00
+  - platform: gpio
+    id: download_mode
+    pin: $SM_011_PA00
+    name: "Zigbee Download Mode"
+    inverted: true
+    restore_mode: ALWAYS_OFF
+light:
+  - platform: monochromatic
+    name: "green led"
+    output: output0
+output:
+  - platform: ledc
+    pin: $Led_i
+    id: output0
+    inverted: true
+binary_sensor:
+  - platform: gpio
+    name: "Zigbee Reset Button"
+    pin:
+      number: $Button_1
+      inverted: true
+    on_press:
+      - switch.turn_off: download_mode
+      - switch.turn_on: zigbee_reset
+status_led:
+  pin:
+    # red led
+    number: $LedStatus
+    inverted: true
+
+sensor:
+  - platform: uptime
+    name: "Uptime"
+    id: uptime_s
+    update_interval: 60s
+
+
